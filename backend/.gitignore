@@ -1,0 +1,41 @@
+# ======================
+# Virtual Environment
+# ======================
+venv/
+env/
+
+# ======================
+# Python Cache
+# ======================
+__pycache__/
+*.pyc
+*.pyo
+
+# ======================
+# TensorFlow / Keras
+# ======================
+*.h5
+*.keras
+*.pb
+
+# ======================
+# Dataset / Images
+# ======================
+dataset/
+data/
+images/
+uploads/
+
+# ======================
+# Logs & Temp files
+# ======================
+*.log
+*.tmp
+
+# ======================
+# OS / Editor files
+# ======================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
