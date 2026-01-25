@@ -77,80 +77,162 @@
 #     app.run(host="0.0.0.0", port=5000, debug=True)
 
 
+# from flask import Flask, request, jsonify
+# from flask_cors import CORS
+# from tensorflow.keras.models import load_model
+# from tensorflow.keras.preprocessing.image import img_to_array
+# import numpy as np
+# import os
+# import traceback
+# import tempfile
+
+# from ela import convert_to_ela_image
+# from preprocess import preprocess_image
+# from gemini_helper import gemini_image_analysis
+
+# app = Flask(__name__)
+# CORS(app)
+
+# # ---------------- LOAD MODEL SAFELY ----------------
+# MODEL_PATH = "forgery_model.h5"
+# model = None
+
+# def load_cnn_model():
+#     global model
+#     if model is None:
+#         model = load_model(MODEL_PATH)
+
+# # ---------------- ROUTES ----------------
+
+# @app.route("/")
+# def home():
+#     return "Hybrid Image Forgery Detection API Running"
+
+# @app.route("/predict", methods=["POST"])
+# def predict():
+#     try:
+#         if "image" not in request.files:
+#             return jsonify({"error": "No image uploaded"}), 400
+
+#         load_cnn_model()  # load model only once
+
+#         file = request.files["image"]
+
+#         # Create temp file (cloud-safe)
+#         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp:
+#             file.save(temp.name)
+#             img_path = temp.name
+
+#         # -------- CNN + ELA --------
+#         ela_img = convert_to_ela_image(img_path)
+#         processed_img = preprocess_image(ela_img)
+#         processed_img = img_to_array(processed_img)
+#         processed_img = np.expand_dims(processed_img, axis=0)
+
+#         cnn_score = float(model.predict(processed_img)[0][0])
+#         cnn_label = "Fake" if cnn_score > 0.5 else "Authentic"
+
+#         # -------- Gemini --------
+#         try:
+#             gemini_label, gemini_reason = gemini_image_analysis(img_path)
+#         except Exception:
+#             gemini_label = "Unavailable"
+#             gemini_reason = "Gemini API unavailable or quota exceeded."
+
+#         # -------- Final Decision --------
+#         final_label = "Fake" if (cnn_label == "Fake" or gemini_label == "Fake") else "Authentic"
+
+#         result = {
+#             "final_prediction": final_label,
+#             "cnn_prediction": cnn_label,
+#             "cnn_confidence": round(cnn_score, 4),
+#             "gemini_prediction": gemini_label,
+#             "gemini_reason": gemini_reason[:300]
+#         }
+
+#         print("🔍 BACKEND LOG →", result)
+#         return jsonify(result)
+
+#     except Exception as e:
+#         traceback.print_exc()
+#         return jsonify({"error": str(e)}), 500
+
+#     finally:
+#         try:
+#             if img_path and os.path.exists(img_path):
+#                 os.remove(img_path)
+#         except Exception:
+#             pass
+
+
+# # ---------------- RENDER ENTRY POINT ----------------
+# if __name__ == "__main__":
+#     port = int(os.environ.get("PORT", 5000))
+#     app.run(host="0.0.0.0", port=port)
+
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.image import img_to_array
-import numpy as np
 import os
-import traceback
 import tempfile
+import traceback
 
-from ela import convert_to_ela_image
-from preprocess import preprocess_image
-from gemini_helper import gemini_image_analysis
+# Optional imports (safe on Render)
+try:
+    from gemini_helper import gemini_image_analysis
+except Exception:
+    gemini_image_analysis = None
 
 app = Flask(__name__)
 CORS(app)
 
-# ---------------- LOAD MODEL SAFELY ----------------
-MODEL_PATH = "forgery_model.h5"
-model = None
-
-def load_cnn_model():
-    global model
-    if model is None:
-        model = load_model(MODEL_PATH)
-
-# ---------------- ROUTES ----------------
-
+# -------------------------------------------------
+# HOME ROUTE
+# -------------------------------------------------
 @app.route("/")
 def home():
-    return "Hybrid Image Forgery Detection API Running"
+    return "Image Forgery Detection Backend is Running"
 
+# -------------------------------------------------
+# PREDICT ROUTE
+# -------------------------------------------------
 @app.route("/predict", methods=["POST"])
 def predict():
+    img_path = None
     try:
         if "image" not in request.files:
             return jsonify({"error": "No image uploaded"}), 400
 
-        load_cnn_model()  # load model only once
-
         file = request.files["image"]
 
-        # Create temp file (cloud-safe)
+        # Save image temporarily (Render-safe)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp:
             file.save(temp.name)
             img_path = temp.name
 
-        # -------- CNN + ELA --------
-        ela_img = convert_to_ela_image(img_path)
-        processed_img = preprocess_image(ela_img)
-        processed_img = img_to_array(processed_img)
-        processed_img = np.expand_dims(processed_img, axis=0)
-
-        cnn_score = float(model.predict(processed_img)[0][0])
-        cnn_label = "Fake" if cnn_score > 0.5 else "Authentic"
-
-        # -------- Gemini --------
-        try:
-            gemini_label, gemini_reason = gemini_image_analysis(img_path)
-        except Exception:
+        # ---------------- GEMINI ANALYSIS ----------------
+        if gemini_image_analysis:
+            try:
+                gemini_label, gemini_reason = gemini_image_analysis(img_path)
+            except Exception:
+                gemini_label = "Unavailable"
+                gemini_reason = "Gemini API error or quota exceeded."
+        else:
             gemini_label = "Unavailable"
-            gemini_reason = "Gemini API unavailable or quota exceeded."
+            gemini_reason = "Gemini helper not configured."
 
-        # -------- Final Decision --------
-        final_label = "Fake" if (cnn_label == "Fake" or gemini_label == "Fake") else "Authentic"
+        # ---------------- FINAL DECISION ----------------
+        final_label = gemini_label if gemini_label != "Unavailable" else "Unknown"
 
         result = {
             "final_prediction": final_label,
-            "cnn_prediction": cnn_label,
-            "cnn_confidence": round(cnn_score, 4),
+            "cnn_prediction": "Unavailable (Model not deployed on cloud)",
+            "cnn_confidence": 0.0,
             "gemini_prediction": gemini_label,
             "gemini_reason": gemini_reason[:300]
         }
 
-        print("🔍 BACKEND LOG →", result)
+        print("🔍 BACKEND RESULT →", result)
         return jsonify(result)
 
     except Exception as e:
@@ -164,8 +246,10 @@ def predict():
         except Exception:
             pass
 
-
-# ---------------- RENDER ENTRY POINT ----------------
+# -------------------------------------------------
+# RENDER ENTRY POINT
+# -------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
