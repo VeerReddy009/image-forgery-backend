@@ -3,7 +3,7 @@ import json
 import base64
 
 # Hardcoded for your major project verification
-API_KEY = "AIzaSyA89BPCNKTh-hZYSr0rN6TnS0odwiNuMok"
+API_KEY = ""
 
 def get_available_model():
     """Finds the correct model name authorized for this API key."""
